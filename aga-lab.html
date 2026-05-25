@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Laboratorio de Matrices: P' = M · P</title>
+    <style>
+        :root {
+            --bg-color: #0d0d12;
+            --panel-bg: #1a1a24;
+            --accent: #00f2ff;
+            --text: #e0e0e0;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text);
+            margin: 0;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* Panel de Controles */
+        #ui-panel {
+            width: 350px;
+            background-color: var(--panel-bg);
+            padding: 20px;
+            box-shadow: 5px 0 15px rgba(0,0,0,0.5);
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            overflow-y: auto;
+        }
+
+        h2 { color: var(--accent); margin-top: 0; border-bottom: 1px solid #333; padding-bottom: 10px; }
+
+        .control-group { background: #252533; padding: 12px; border-radius: 8px; }
+        .control-group h3 { margin: 0 0 10px 0; font-size: 0.9rem; text-transform: uppercase; color: #888; }
+
+        label { display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 5px; }
+        input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; }
+
+        /* Matriz Visual */
+        #matrix-container {
+            margin-top: 20px;
+            background: #000;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid var(--accent);
+        }
+
+        .matrix-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 5px;
+            font-family: 'Courier New', Courier, monospace;
+        }
+
+        .matrix-cell {
+            background: #111;
+            color: var(--accent);
+            padding: 8px 2px;
+            text-align: center;
+            font-size: 0.85rem;
+            border: 1px solid #222;
+        }
+
+        .highlight-t { color: #ff4d4d; font-weight: bold; } /* Color para traslación */
+
+        .formula-display {
+            text-align: center;
+            font-size: 1.2rem;
+            margin: 10px 0;
+            font-weight: bold;
+        }
+
+        #canvas-container { flex-grow: 1; position: relative; }
+        
+        .legend {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(0,0,0,0.7);
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 0.8rem;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="ui-panel">
+        <h2>Transformaciones 3D</h2>
+        
+        <div class="formula-display">P' = M · P</div>
+
+        <div class="control-group">
+            <h3>📦 Traslación (T)</h3>
+            <label>Eje X <span id="val-tx">0</span></label>
+            <input type="range" id="tx" min="-5" max="5" step="0.1" value="0">
+            <label>Eje Y <span id="val-ty">0</span></label>
+            <input type="range" id="ty" min="-5" max="5" step="0.1" value="0">
+            <label>Eje Z <span id="val-tz">0</span></label>
+            <input type="range" id="tz" min="-5" max="5" step="0.1" value="0">
+        </div>
+
+        <div class="control-group">
+            <h3>🔄 Rotación (R) - Grados</h3>
+            <label>Eje X <span id="val-rx">0</span>°</label>
+            <input type="range" id="rx" min="0" max="360" value="0">
+            <label>Eje Y <span id="val-ry">0</span>°</label>
+            <input type="range" id="ry" min="0" max="360" value="0">
+            <label>Eje Z <span id="val-rz">0</span>°</label>
+            <input type="range" id="rz" min="0" max="360" value="0">
+        </div>
+
+        <div class="control-group">
+            <h3>📏 Escalado (S)</h3>
+            <label>Escala General <span id="val-s">1.0</span></label>
+            <input type="range" id="s" min="0.1" max="3" step="0.1" value="1">
+        </div>
+
+        <div id="matrix-container">
+            <h3 style="margin-top:0; color:white; font-size:0.8rem">Matriz de Transformación M (4x4)</h3>
+            <div class="matrix-grid" id="matrix-visual">
+                </div>
+            <p style="font-size:0.7rem; color:#666; margin-top:10px;">
+                * La última columna representa la traslación (Tx, Ty, Tz).
+            </p>
+        </div>
+    </div>
+
+    <div id="canvas-container">
+        <div class="legend">
+            Eje X: <span style="color:red">Rojo</span> | 
+            Eje Y: <span style="color:green">Verde</span> | 
+            Eje Z: <span style="color:blue">Azul</span>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+    <script>
+        // --- CONFIGURACIÓN DE THREE.JS ---
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, (window.innerWidth - 350) / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth - 350, window.innerHeight);
+        document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+        // Iluminación
+        const light = new THREE.PointLight(0xffffff, 1, 100);
+        light.position.set(10, 10, 10);
+        scene.add(light);
+        scene.add(new THREE.AmbientLight(0x404040));
+
+        // --- MODELO FALL GUY BASE (Cuerpo sin accesorios) ---
+        const fallGuy = new THREE.Group();
+        const bodyColor = 0xff00cc; 
+        
+        // Cuerpo principal
+        const bodyGeo = new THREE.SphereGeometry(0.7, 32, 32);
+        const bodyMat = new THREE.MeshStandardMaterial({color: bodyColor});
+        const body = new THREE.Mesh(bodyGeo, bodyMat);
+        body.scale.set(1, 1.2, 0.9);
+        fallGuy.add(body);
+
+        // Piernas
+        const legGeo = new THREE.CylinderGeometry(0.15, 0.15, 0.6, 12);
+        const leg1 = new THREE.Mesh(legGeo, bodyMat);
+        leg1.position.set(0.3, -0.8, 0);
+        fallGuy.add(leg1);
+        const leg2 = new THREE.Mesh(legGeo, bodyMat);
+        leg2.position.set(-0.3, -0.8, 0);
+        fallGuy.add(leg2);
+
+        fallGuy.matrixAutoUpdate = false; 
+        scene.add(fallGuy);
+
+        // Ejes
+        const axesHelper = new THREE.AxesHelper(5);
+        scene.add(axesHelper);
+
+        camera.position.set(5, 5, 8);
+        camera.lookAt(0, 0, 0);
+
+        // --- LÓGICA DE TRANSFORMACIÓN ---
+
+        const inputs = ['tx', 'ty', 'tz', 'rx', 'ry', 'rz', 's'];
+        const matrixVisual = document.getElementById('matrix-visual');
+
+        function update() {
+            // Leer valores de los sliders
+            const tx = parseFloat(document.getElementById('tx').value);
+            const ty = parseFloat(document.getElementById('ty').value);
+            const tz = parseFloat(document.getElementById('tz').value);
+            const rx = THREE.MathUtils.degToRad(parseFloat(document.getElementById('rx').value));
+            const ry = THREE.MathUtils.degToRad(parseFloat(document.getElementById('ry').value));
+            const rz = THREE.MathUtils.degToRad(parseFloat(document.getElementById('rz').value));
+            const s = parseFloat(document.getElementById('s').value);
+
+            // Actualizar etiquetas de texto
+            document.getElementById('val-tx').innerText = tx;
+            document.getElementById('val-ty').innerText = ty;
+            document.getElementById('val-tz').innerText = tz;
+            document.getElementById('val-rx').innerText = document.getElementById('rx').value;
+            document.getElementById('val-ry').innerText = document.getElementById('ry').value;
+            document.getElementById('val-rz').innerText = document.getElementById('rz').value;
+            document.getElementById('val-s').innerText = s.toFixed(1);
+
+            // Crear matrices individuales
+            const mTranslation = new THREE.Matrix4().makeTranslation(tx, ty, tz);
+            const mRotation = new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(rx, ry, rz));
+            const mScale = new THREE.Matrix4().makeScale(s, s, s);
+
+            // Combinar matrices: M = T * R * S
+            const mFinal = new THREE.Matrix4();
+            mFinal.multiply(mTranslation);
+            mFinal.multiply(mRotation);
+            mFinal.multiply(mScale);
+
+            // Aplicar matriz al personaje
+            fallGuy.matrix.copy(mFinal);
+
+            // Actualizar la visualización de la matriz en el HTML
+            renderMatrixUI(mFinal);
+        }
+
+        function renderMatrixUI(matrix) {
+            matrixVisual.innerHTML = '';
+            const e = matrix.elements; 
+            
+            // Recorremos por filas para la tabla HTML
+            for(let row = 0; row < 4; row++) {
+                for(let col = 0; col < 4; col++) {
+                    const index = col * 4 + row;
+                    const val = e[index].toFixed(2);
+                    const cell = document.createElement('div');
+                    cell.className = 'matrix-cell';
+                    
+                    // Resaltar la última columna (traslación) para didáctica
+                    if(col === 3 && row < 3) cell.classList.add('highlight-t');
+                    
+                    cell.innerText = val;
+                    matrixVisual.appendChild(cell);
+                }
+            }
+        }
+
+        // Listeners
+        inputs.forEach(id => {
+            document.getElementById(id).addEventListener('input', update);
+        });
+
+        // Loop de render
+        function animate() {
+            requestAnimationFrame(animate);
+            renderer.render(scene, camera);
+        }
+
+        // Redimensionado
+        window.addEventListener('resize', () => {
+            camera.aspect = (window.innerWidth - 350) / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth - 350, window.innerHeight);
+        });
+
+        update();
+        animate();
+    </script>
+</body>
+</html>
